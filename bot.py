@@ -1,3 +1,21 @@
+# ---------- RENDER PORT FIX ----------
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+def run_server():
+    server = HTTPServer(("0.0.0.0", 10000), Handler)
+    server.serve_forever()
+
+threading.Thread(target=run_server).start()
+
+
+# ---------- IMPORTS ----------
 import requests
 from bs4 import BeautifulSoup
 import certifi
@@ -13,33 +31,24 @@ from telegram.ext import (
     filters,
 )
 
-TOKEN = "8533716702:AAGQHkAQoir1RDOMu7yKvSHtLUCidfzGOA0"
+TOKEN = "PUT_YOUR_TOKEN_HERE"
 
 SERIAL, RANGE, FILTER = range(3)
 
 user_data_store = {}
 
-# ---------- FAST SESSION ----------
-
 session = requests.Session()
-
-session.headers.update({
-    "User-Agent": "Mozilla/5.0"
-})
+session.headers.update({"User-Agent": "Mozilla/5.0"})
 
 
-# ---------- DATA FETCH ----------
+# ---------- FETCH ----------
 
 def get_data(eid):
 
     url = f"https://upmines.upsdc.gov.in/Transporter/PrintTransporterFormVehicleCheckValidOrNot.aspx?eId={eid}"
 
     try:
-        r = session.get(
-            url,
-            timeout=5,
-            verify=certifi.where()
-        )
+        r = session.get(url, timeout=5, verify=certifi.where())
 
         if r.status_code != 200:
             return None
@@ -95,9 +104,7 @@ def format_result(item):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    await update.message.reply_text(
-        "Enter 19-digit serial:"
-    )
+    await update.message.reply_text("Enter 19 digit serial")
 
     return SERIAL
 
@@ -122,9 +129,7 @@ async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "prefix": prefix
     }
 
-    await update.message.reply_text(
-        "Enter range (example 1000-1100 or 500)"
-    )
+    await update.message.reply_text("Enter range 1000-1100")
 
     return RANGE
 
@@ -148,7 +153,7 @@ async def get_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
             r_start, r_end = r_end, r_start
 
         if r_end - r_start > 500:
-            await update.message.reply_text("Max range 500")
+            await update.message.reply_text("Max 500 range")
             return ConversationHandler.END
 
         user_data_store[user_id]["r_start"] = r_start
@@ -158,14 +163,12 @@ async def get_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Invalid range")
         return ConversationHandler.END
 
-    await update.message.reply_text(
-        "Enter destination keyword"
-    )
+    await update.message.reply_text("Enter district keyword")
 
     return FILTER
 
 
-# ---------- FILTER + SEARCH ----------
+# ---------- SEARCH ----------
 
 async def get_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -180,7 +183,7 @@ async def get_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefix = user_data_store[user_id]["prefix"]
 
     await update.message.reply_text(
-        f"Searching {r_start}-{r_end}..."
+        f"Searching {r_start}-{r_end}"
     )
 
     MAX_RESULTS = 20
@@ -218,168 +221,16 @@ async def get_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if res:
                 results.append(res)
 
-            # stop only if already 20 found
             if len(results) >= MAX_RESULTS:
                 break
 
 
     if not results:
 
-        await update.message.reply_text(
-            "No records found"
-        )
+        await update.message.reply_text("No result")
 
         return ConversationHandler.END
 
-
-    msg = "\n\n".join(
-        format_result(r) for r in results
-    )
-
-    await update.message.reply_text(msg)
-
-    return ConversationHandler.END
-
-
-    user_id = update.message.from_user.id
-
-    keyword = update.message.text.lower().strip()
-
-    filters_input = keyword.split()
-
-    r_start = user_data_store[user_id]["r_start"]
-    r_end = user_data_store[user_id]["r_end"]
-    prefix = user_data_store[user_id]["prefix"]
-
-    await update.message.reply_text(
-        f"Smart searching {r_start}-{r_end}..."
-    )
-
-    BATCH = 20
-    MAX_RESULTS = 20
-
-    def worker(i):
-
-        eid = prefix + str(i).zfill(4)
-
-        data = get_data(eid)
-
-        if not data:
-            return None
-
-        combined = (
-            data["DESTINATION"].lower()
-            + " "
-            + data["MINERAL"].lower()
-        )
-
-        if all(f in combined for f in filters_input):
-            return data
-
-        return None
-
-
-    results = []
-
-    current = r_start
-
-    while current <= r_end:
-
-        batch_end = min(current + BATCH - 1, r_end)
-
-        with ThreadPoolExecutor(max_workers=10) as executor:
-
-            for res in executor.map(
-                worker,
-                range(current, batch_end + 1)
-            ):
-
-                if res:
-                    results.append(res)
-
-                if len(results) >= MAX_RESULTS:
-                    break
-
-        if results:
-            break
-
-        current += BATCH
-
-
-    if not results:
-
-        await update.message.reply_text(
-            "No records found"
-        )
-
-        return ConversationHandler.END
-
-
-    msg = "\n\n".join(
-        format_result(r) for r in results
-    )
-
-    await update.message.reply_text(msg)
-
-    return ConversationHandler.END
-
-
-    user_id = update.message.from_user.id
-
-    keyword = update.message.text.lower().strip()
-
-    filters_input = keyword.split()
-
-    r_start = user_data_store[user_id]["r_start"]
-    r_end = user_data_store[user_id]["r_end"]
-    prefix = user_data_store[user_id]["prefix"]
-
-    await update.message.reply_text(
-        f"Searching {r_start}-{r_end}..."
-    )
-
-    def worker(i):
-
-        eid = prefix + str(i).zfill(4)
-
-        data = get_data(eid)
-
-        if not data:
-            return None
-
-        combined = (
-            data["DESTINATION"].lower()
-            + " "
-            + data["MINERAL"].lower()
-        )
-
-        if all(f in combined for f in filters_input):
-            return data
-
-        return None
-
-    results = []
-
-    with ThreadPoolExecutor(max_workers=12) as executor:
-
-        for res in executor.map(
-            worker,
-            range(r_start, r_end + 1)
-        ):
-
-            if res:
-                results.append(res)
-
-            if len(results) >= 20:
-                break
-
-    if not results:
-
-        await update.message.reply_text(
-            "No records found"
-        )
-
-        return ConversationHandler.END
 
     msg = "\n\n".join(
         format_result(r) for r in results
