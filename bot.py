@@ -31,7 +31,7 @@ from telegram.ext import (
     filters,
 )
 
-TOKEN = "PUT_YOUR_TOKEN_HERE"
+TOKEN = "8533716702:AAGQHkAQoir1RDOMu7yKvSHtLUCidfzGOA0"
 
 SERIAL, RANGE, FILTER = range(3)
 
